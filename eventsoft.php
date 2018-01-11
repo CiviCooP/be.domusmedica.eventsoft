@@ -162,29 +162,44 @@ function eventsoft_civicrm_postProcess($formName, &$form){
   if($formName == 'CRM_Event_Form_Participant') {
     if(!empty($form->_submitValues['soft_credit_contact_id'])) {
       try{
-       $contributionId = civicrm_api3('ParticipantPayment', 'getvalue', array(
-         'participant_id' => $form->_id,
-         'return' => 'contribution_id'));
-       $eventTitle = civicrm_api3('Event', 'getvalue', array(
-         'return' => "title",
-         'id' => $form->_submitValues['event_id']
-       ));
-       $displayName =  civicrm_api3('Contact', 'getvalue', array(
-         'return' => "display_name",
-         'id' => $form->_contactId,
+         $contributionId = civicrm_api3('ParticipantPayment', 'getvalue', array(
+           'participant_id' => $form->_id,
+           'return' => 'contribution_id'));
+         $eventTitle = civicrm_api3('Event', 'getvalue', array(
+           'return' => "title",
+           'id' => $form->_submitValues['event_id']
+         ));
+         $displayName =  civicrm_api3('Contact', 'getvalue', array(
+           'return' => "display_name",
+           'id' => $form->_contactId,
 
-       ));
-       civicrm_api3('Contribution', 'create', array(
-         'id' => $contributionId,
-         'contact_id' => $form->_submitValues['soft_credit_contact_id'],
-         'source' => $eventTitle . ' : ' . $displayName));
-       $result = civicrm_api3('ContributionSoft', 'create', array(
-         'contribution_id' => $contributionId,
-         'amount' => $form->_submitValues['total_amount'] ,
-         'contact_id' => $form->_contactId,
-         'soft_credit_type_id' => $form->_submitValues['soft_credit_type_id'],
+         ));
+         civicrm_api3('Contribution', 'create', array(
+           'id' => $contributionId,
+           'contact_id' => $form->_submitValues['soft_credit_contact_id'],
+           'source' => $eventTitle . ' : ' . $displayName));
+         $result = civicrm_api3('ContributionSoft', 'create', array(
+           'contribution_id' => $contributionId,
+           'amount' => $form->_submitValues['total_amount'] ,
+           'contact_id' => $form->_contactId,
+           'soft_credit_type_id' => $form->_submitValues['soft_credit_type_id'],
 
-      ));
+         ));
+        // update label of lineitem too
+        $newLabel = $eventTitle.' (t.b.v. '.$displayName.')';
+        $query = 'UPDATE civicrm_line_item SET label = %1 WHERE contribution_id = %2';
+        $queryParams = array(
+          1 => array($newLabel, 'String'),
+          2 => array($contributionId, 'Integer'),
+        );
+        try {
+          CRM_Core_DAO::executeQuery($query, $queryParams);
+        }
+        catch (Exception $ex) {
+          CRM_Core_Error::debug_log_message('Unable to change label into '.$newLabel. ' for line items with contribution id '.$contributionId);
+        }
+
+
      } catch (CiviCRM_API3_Exception $ex){
         CRM_Core_Error::debug_var('Api Error in extension EventSoft', $ex->getExtraParams());
       }
