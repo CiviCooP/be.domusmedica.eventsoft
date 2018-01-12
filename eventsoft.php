@@ -198,12 +198,59 @@ function eventsoft_civicrm_postProcess($formName, &$form){
         catch (Exception $ex) {
           CRM_Core_Error::debug_log_message('Unable to change label into '.$newLabel. ' for line items with contribution id '.$contributionId);
         }
-
-
      } catch (CiviCRM_API3_Exception $ex){
         CRM_Core_Error::debug_var('Api Error in extension EventSoft', $ex->getExtraParams());
       }
     }
+  }
+  // issue 1961 add name to lineitem for membership soft credit
+  if ($formName == 'CRM_Member_Form_Membership') {
+    try {
+      $betaaldDoorTypeId = civicrm_api3('OptionValue', 'getvalue', array(
+        'option_group_id' => 'soft_credit_type',
+        'name' => 'Betaald door',
+        'return' => 'value',
+      ));
+      $formValues = $form->getVar('_params');
+      $formAction = $form->getVar('_action');
+      $contactId = $form->getVar('_contactID');
+      if ($formAction == CRM_Core_Action::ADD || $formAction == CRM_Core_Action::UPDATE) {
+        $membershipIds = $form->getVar('_membershipIDs');
+        // if soft credit Betaald door, change line item for each membership
+        if (isset($formValues['is_different_contribution_contact']) && $formValues['is_different_contribution_contact'] == TRUE && $formValues['soft_credit_type_id'] == $betaaldDoorTypeId) {
+          $contactName = civicrm_api3('Contact', 'getvalue', array(
+            'id' => $contactId,
+            'return' => 'display_name',
+          ));
+          foreach ($membershipIds as $membershipId) {
+            $membershipTypeId = civicrm_api3('Membership', 'getvalue', array(
+              'id' => $membershipId,
+              'return' => 'membership_type_id',
+            ));
+            $membershipType = civicrm_api3('MembershipType', 'getvalue', array(
+              'id' => $membershipTypeId,
+              'return' => 'name',
+            ));
+            $newLabel = $membershipType.' (t.b.v. '.$contactName.')';
+            $query = 'UPDATE civicrm_line_item SET label = %1 WHERE entity_table = %2 AND entity_id = %3';
+            $queryParams = array(
+              1 => array($newLabel, 'String'),
+              2 => array('civicrm_membership', 'String'),
+              3 => array($membershipId, 'Integer'),
+            );
+            try {
+              CRM_Core_DAO::executeQuery($query, $queryParams);
+            }
+            catch (Exception $ex) {
+              CRM_Core_Error::debug_log_message('Unable to change label into '.$newLabel. ' for line items with membership id '.$membershipId);
+            }
+          }
+        }
+      }
+    }
+    catch (CiviCRM_API3_Exception $ex) {
+    }
+
   }
 }
 
